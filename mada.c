@@ -35,8 +35,8 @@ MODULE_VERSION("0.1");
 static dev_t mada_devnum;
 static int mada_major = MADA_MAJOR;
 
-#define  P_VOLTAGE  3.3
-#define MADA_VOLTAGE(devp) P_VOLTAGE
+#define  P_VOLTAGE  33
+#define MADA_VOLTAGE(devp) (P_VOLTAGE*(devp->mada_high)/10)
 
 int mada_gpio[MADA_NUM] = {164, 165, 166, 167};
 
@@ -45,7 +45,7 @@ struct mada_dev{
 	struct device *device;
 	int mada_gpio;
 	unsigned int mada_high;
-	float mada_voltage;
+	unsigned int mada_voltage;
 	dev_t devnum;
 	char mada_name[NAME_SIZE];
 	struct hrtimer mada_hrt;
@@ -54,15 +54,6 @@ struct mada_dev{
 } *mada_devp;
 
 struct class *mada_class;
-
-/*
-int MADA_VOLTAGE(struct mada_dev * devp)
-{
-	int voltage;
-	voltage = P_VOLTAGE * devp->mada_high;
-	return voltage;
-}
-*/
 
 enum hrtimer_restart mada_hrt_callback(struct hrtimer *hrt)
 {
@@ -100,20 +91,35 @@ int mada_release (struct inode *inode, struct file *filp)
 
 ssize_t mada_write (struct file *filp, const char __user *buf, size_t count, loff_t *ppos)
 {
+	int ret;
 	char value[VALUE_SIZE];
 	struct mada_dev *devp = filp->private_data;
-	printk(KERN_INFO "mada_write func.\n");
-	if(0 != copy_from_user(value, buf, sizeof(buf)))
-		printk(KERN_INFO "Error in writing.\n");
-	devp->mada_high = (unsigned int)simple_strtoul(value, NULL, 10);	
-	printk(KERN_INFO "mada_volitage is %dmv.\n", 33*devp->mada_high/10);
+	ret = copy_from_user(value, buf, sizeof(buf));
+	if(0 != ret)
+	{
+		printk(KERN_INFO "error in writing and errnum is %d.\n", ret);
+		return 0;
+	}	
+	else
+		devp->mada_high = (unsigned int)simple_strtoul(value, NULL, 10);	
 	return sizeof(buf);
 }
 
 ssize_t mada_read (struct file *filp, char __user *buf, size_t count, loff_t *ppos)
 {
-	printk(KERN_INFO "mada_read func.\n");
-	return 0;
+	int ret;
+	struct mada_dev *devp = filp->private_data;
+	char value[VALUE_SIZE];
+	devp->mada_voltage = MADA_VOLTAGE(devp);
+	sprintf(value, "%d", devp->mada_voltage);
+	ret = copy_to_user(buf,value,sizeof(value));
+	if(0 != ret)
+	{
+		printk(KERN_INFO "error in reading and errnum is %d.\n", ret);
+	}
+	else		
+		printk(KERN_INFO "%s mada_voltage is %s.\n",devp->mada_name,value);
+	return ret;
 }
 
 
@@ -225,3 +231,4 @@ void __exit mada_exit(void)
 }
 module_init(mada_init);
 module_exit(mada_exit);
+
